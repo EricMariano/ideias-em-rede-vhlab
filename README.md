@@ -1,6 +1,6 @@
 # ideias-em-rede-vhlab
 
-Hackathon Ideias em Rede — 1ª Edição (Instituto Kunumi / VHLab).
+Ideias em Rede — 1ª Edição (Instituto Kunumi / VHLab).
 
 RAG agêntico de auditoria documental sobre o dataset [PublicHearingBR](https://huggingface.co/datasets/unicamp-dl/PublicHearingBR).
 
