@@ -1,0 +1,43 @@
+# Python
+.venv/
+**/.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+**/.pytest_cache/
+
+# Environment variables & secrets
+.env
+.env.local
+.env.*
+!.env.example
+
+# IDE / OS
+.cursor/
+.idea/
+.vscode/
+.DS_Store
+**/.DS_Store
+*.swp
+*.swo
+
+# Data & local artifacts
+*.sqlite3
+*.parquet
+*.jsonl
+data/raw/
+data/processed/
+data/chroma_db/
+
+# Local nested git backup (do not commit)
+.knownledge-Lab.git.bak/
+
+# Nested local clone (files live at repo root)
+knownledge-Lab/
+
+# Virtual Human Toolkit (~19GB) — already at github.com/EricMariano/vhtoolkit-vhlab
+vhtoolkit-vhlab/
