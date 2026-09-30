@@ -1,0 +1,8 @@
+# O site/ e o proprio artefato do deploy: precisa subir, ainda que esteja no .gitignore
+# (la ele existe so para os 56 MB de build nao entrarem no versionamento).
+# Mesmo assim, use `railway up --no-gitignore`, que e o comportamento garantido.
+README.md
+sync-build.sh
+.dockerignore
+.env.deepinfra
+.env

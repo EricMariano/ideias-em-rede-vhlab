@@ -41,3 +41,28 @@ knownledge-Lab/
 
 # Virtual Human Toolkit (~19GB) — already at github.com/EricMariano/vhtoolkit-vhlab
 vhtoolkit-vhlab/
+
+# Artefatos copiados para as imagens de deploy.
+# ATENCAO: o `railway up` respeita este arquivo. Estes caminhos SAO o conteudo do deploy,
+# entao suba sempre com `railway up --no-gitignore` — sem a flag o contexto vai vazio e o
+# build falha no COPY com "not found".
+deploy/webgl/site/
+deploy/piper/app/
+deploy/piper/requirements.txt
+
+# Token da DeepInfra usado nos testes locais do TTS. Nunca versionar, nunca subir.
+deploy/webgl/.env.deepinfra
+
+# Credenciais de service account do Firebase e exports de dados de participantes.
+*firebase-adminsdk*.json
+deploy/sessoes_export.xlsx
+deploy/analise_respostas.xlsx
+deploy/teste_t_feminino_x_masculino.xlsx
+deploy/godspeed_subescalas.xlsx
+deploy/analise_identidade_grupo.xlsx
+deploy/resumo_subescalas_identidade.xlsx
+
+# Saídas da análise das conversas com LLM (contêm falas de participantes).
+deploy/analise_llm/
+deploy/analise_conversas_llm/
+deploy/analise_conversas_llm.zip

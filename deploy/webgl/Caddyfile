@@ -1,0 +1,159 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+# Railway injeta a porta em $PORT. O 8080 e o default para rodar local.
+:{$PORT:8080} {
+	root * /srv
+
+	# O Unity gera os assets ja comprimidos, com a extensao .gz no nome, e o loader
+	# os requisita por esse nome exato. Cabe ao servidor declarar o Content-Encoding:
+	# sem isso o navegador entrega bytes gzipados crus ao runtime e a pagina fica em
+	# branco, sem erro visivel. Nao usamos a diretiva `encode` justamente para nao
+	# comprimir de novo o que ja esta comprimido.
+
+	@wasm_gz path *.wasm.gz
+	header @wasm_gz {
+		Content-Encoding gzip
+		Content-Type application/wasm
+	}
+
+	@js_gz path *.js.gz
+	header @js_gz {
+		Content-Encoding gzip
+		Content-Type application/javascript
+	}
+
+	@data_gz path *.data.gz
+	header @data_gz {
+		Content-Encoding gzip
+		Content-Type application/octet-stream
+	}
+
+	@symbols_gz path *.symbols.json.gz
+	header @symbols_gz {
+		Content-Encoding gzip
+		Content-Type application/json
+	}
+
+	# Os assets do Unity tem hash/nome estavel por build; o index nao pode ser cacheado.
+	@immutable path /Build/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	# Os caminhos do estudo servem o MESMO index; entram aqui porque a diretiva `header`
+	# roda antes do `rewrite`, entao neste ponto o caminho ainda e /e/1 e /e/2.
+	@index path / /index.html /e/1 /e/2
+	header @index Cache-Control "no-cache"
+
+	# Portas de entrada do estudo. Cada participante recebe UM destes links, e o grupo
+	# (personagem masculino ou feminino) fica no link em vez de depender de o facilitador
+	# lembrar de escolher na UI — o seletor de personagem fica escondido no build.
+	#
+	# Os caminhos sao opacos de proposito. A barra de enderecos fica visivel ao participante
+	# a conversa inteira, e um "?genero=feminino" ali contaria a ele em que condicao esta —
+	# exatamente o que o desenho experimental esconde. Com /e/1 e /e/2 da para perceber que
+	# existem dois grupos, mas nao qual e o seu.
+	#
+	# `rewrite`, nao `redir`: o navegador continua mostrando /e/1 enquanto o servidor entrega
+	# o index. O Unity le o grupo de Application.absoluteURL, que reflete o caminho — entao
+	# a URL ja nasce certa e nao precisa ser alterada depois da carga, sem corrida com o
+	# Start() da cena. E um F5 recarrega a mesma coisa.
+	@grupo_masculino path /e/1 /e/1/
+	rewrite @grupo_masculino /index.html
+
+	@grupo_feminino path /e/2 /e/2/
+	rewrite @grupo_feminino /index.html
+
+	# A raiz nao serve a demo: manda para o sorteio. Sem isto ela e uma porta lateral que
+	# entrega uma sessao SEM grupo e, pior, sempre com o mesmo personagem — o Unity, sem
+	# /e/1 nem /e/2 na URL, cai no primeiro personagem ativo da cena, que e o KevinCivilian.
+	# Um participante que chegasse aqui por engano viraria dado sem rotulo e vies silencioso
+	# para o lado masculino. Medido em producao antes do conserto: a raiz gravava a sessao
+	# com grupo "indefinido" e mostrava o Kevin.
+	@raiz path / /index.html
+	redir @raiz /entrar 302
+
+	# ESTE e o link que se distribui aos participantes. Um so endereco para todo mundo:
+	# quem sorteia o grupo e o servidor, com blocos permutados (src/api/alocacao.py no
+	# servico do RAG), de modo que a cada 4 participantes ha exatamente 2 de cada lado.
+	#
+	# Sortear no servidor, e nao no navegador, tem duas razoes. A resposta e um 302 que
+	# acontece ANTES de a pagina carregar, entao o Unity ja encontra /e/1 ou /e/2 em
+	# Application.absoluteURL quando a cena inicia — sem corrida de tempo. E o contador do
+	# equilibrio vive num so lugar; espalhado pelos navegadores, nao haveria como equilibrar.
+	@entrar path /entrar /entrar/
+	handle @entrar {
+		rewrite * /estudo/entrar
+		reverse_proxy {$RAG_UPSTREAM:rag-api.railway.internal:8080} {
+			transport http {
+				response_header_timeout 30s
+				dial_timeout 10s
+			}
+		}
+	}
+
+	# Atalhos para o facilitador, que sao os unicos que precisam ser memoraveis.
+	# ATENCAO: nao distribua estes aos participantes — "homem"/"mulher" entrega o grupo antes
+	# mesmo de a pagina abrir. Mande /e/1 e /e/2.
+	@homem path /homem /homem/
+	redir @homem /e/1 302
+
+	@mulher path /mulher /mulher/
+	redir @mulher /e/2 302
+
+	# Os personagens sao Addressables hospedados num bucket S3 da USC cuja politica de
+	# CORS so libera https://vhtoolkitwww.ict.usc.edu. Servindo esse conteudo sob o nosso
+	# proprio dominio, a requisicao do navegador deixa de ser cross-origin e o CORS do
+	# bucket para de importar. O build aponta para ca via AWSFileStorageS3System.GetLocation
+	# (patch em Packages/edu.usc.ict.ride.core).
+	handle_path /ride-content-e22e17c3/* {
+		reverse_proxy https://ride-content-e22e17c3.s3.amazonaws.com {
+			header_up Host ride-content-e22e17c3.s3.amazonaws.com
+			# O S3 respondia com CORS para a origem da USC; nao repassamos esses headers
+			# para nao confundir o navegador, que agora ve tudo como same-origin.
+			header_down -Access-Control-Allow-Origin
+			header_down -Access-Control-Allow-Methods
+			header_down -Access-Control-Allow-Credentials
+		}
+	}
+
+	# O Piper roda no mesmo container, escutando so em 127.0.0.1. Exposto aqui sob /tts,
+	# na mesma origem da pagina: o navegador nunca faz requisicao cross-origin para o TTS,
+	# entao nao ha CORS a configurar, e o build nao precisa saber o dominio de producao.
+	# handle_path remove o prefixo, entao /tts/synthesize chega como /synthesize.
+	handle_path /tts/* {
+		reverse_proxy 127.0.0.1:{$TTS_PORT:9002}
+	}
+
+	# O RAG (auditoria das audiencias publicas) roda em servico proprio no mesmo projeto
+	# do Railway, porque precisa de um volume para o indice vetorial e volume nao pode ser
+	# compartilhado entre servicos. Alcancado pela rede privada, nunca pela internet.
+	# Exposto aqui sob /rag, na mesma origem da pagina: mesmo raciocinio do /tts — o
+	# navegador nao faz requisicao cross-origin, entao nao ha CORS a configurar, e a chave
+	# da DeepInfra nunca sai do servidor. handle_path remove o prefixo, entao
+	# /rag/v1/chat/completions chega como /v1/chat/completions.
+	handle_path /rag/* {
+		reverse_proxy {$RAG_UPSTREAM:rag-api.railway.internal:8080} {
+			# Identificacao da sessao do estudo: os cookies que o inject-session.py grava
+			# viajam sozinhos, porque a requisicao e de mesma origem e o reverse_proxy
+			# repassa o header Cookie inteiro. O servico os le de la.
+			#
+			# Houve aqui um `header_up X-Sessao {http.request.cookie.vhlab_sid}`, e ele foi
+			# removido: quando o cookie NAO existe, o Caddy nao resolve o placeholder para
+			# vazio — repassa o texto literal, e a requisicao acabava registrada sob a
+			# sessao "http.request.cookie.vhlab_sid" em vez de "sem-sessao". Traduzir
+			# cookie em header era uma peca a mais que so acrescentava esse modo de falha.
+
+			# A rota rapida do RAG leva de 5 a 9 s (busca vetorial + uma chamada de LLM),
+			# bem acima do que um proxy costuma esperar de um upstream.
+			transport http {
+				response_header_timeout 60s
+				dial_timeout 10s
+			}
+		}
+	}
+
+	file_server
+}
